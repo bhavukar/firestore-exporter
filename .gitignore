@@ -1,0 +1,56 @@
+# Enterprise Gitignore for Firestore Exporter Monorepo
+
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Turborepo build caches
+.turbo/
+**/.turbo/
+
+# Build & compilation outputs
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+
+# Electron-builder packaged distribution output
+dist-packaged/
+**/dist-packaged/
+release/
+**/release/
+
+# Development & Local environments
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Logs and debug files
+*.log
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+npm-debug.log*
+logs/
+**/logs/
+
+# Local data & storage files
+.local
+*.local.json
+localStorage-cache/

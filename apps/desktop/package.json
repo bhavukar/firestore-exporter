@@ -1,0 +1,56 @@
+{
+  "name": "firestore-exporter-desktop",
+  "version": "1.0.0",
+  "main": "./dist/main/main.js",
+  "scripts": {
+    "dev:renderer": "vite",
+    "dev:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --watch --onSuccess \"node scripts/dev-electron.js\"",
+    "dev": "concurrently -k -s first \"pnpm dev:renderer\" \"pnpm dev:main\"",
+    "build:renderer": "vite build",
+    "build:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --minify",
+    "build": "pnpm build:renderer && pnpm build:main",
+    "dist": "pnpm build && electron-builder"
+  },
+  "dependencies": {
+    "@firestore-exporter/core": "workspace:*",
+    "@firestore-exporter/ui": "workspace:*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.359.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.1",
+    "electron-builder": "^24.13.3",
+    "rimraf": "^5.0.5",
+    "tsup": "^8.0.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.6"
+  },
+  "build": {
+    "appId": "com.firestore.exporter",
+    "productName": "Firestore Exporter",
+    "directories": {
+      "output": "dist-packaged"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    }
+  }
+}
+
