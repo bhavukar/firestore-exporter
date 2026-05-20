@@ -2,7 +2,7 @@
 
 ![Firestore Exporter Dashboard Mockup](website/app_mockup.png)
 
-Firestore Exporter is a public, zero-friction, cross-platform desktop application designed to connect to your local **Firebase Emulator Suite (Firestore)**. It enables developers to visually explore their local emulator databases, analyze nested structures, and export data as perfectly formatted JSON with a single click.
+Firestore Exporter is a public, zero-friction, cross-platform desktop application designed to connect to both your local **Firebase Emulator Suite (Firestore)** and **Live Cloud Firestore (Production / Staging / Development)** databases. It enables developers to visually explore emulator and production databases, analyze nested structures, and export data as perfectly formatted JSON with a single click.
 
 Styled with a premium, dark-themed **Windows 11 Fluent UI (WinUI)** layout, the app features dynamic platform adaptations to look and feel completely native across **Windows**, **macOS**, and **Linux**.
 
@@ -14,8 +14,10 @@ Styled with a premium, dark-themed **Windows 11 Fluent UI (WinUI)** layout, the 
     *   **Windows:** Implements native frameless Mica style sheets and window controls overlay integrations.
     *   **macOS:** Automatically offsets navigation bars to perfectly position standard traffic light controls.
     *   **Linux:** Integrates seamlessly into default Gtk/system window decoration frames to prevent missing button controls.
-*   **Auto-Detect Ports:** Instantly scans common local emulator ports (`8080`, `8085`, `8081`, `8082`, `9000`, `3000`) using low-level TCP socket pings to connect in seconds.
-*   **Triple-Pane workspace:**
+*   **Dual Connection Gateways:**
+    *   **Local Emulator Suite:** Auto-scans common local ports (`8080`, `8085`, `8081`, `8082`, `9000`, `3000`) using low-level TCP socket pings to connect in seconds.
+    *   **Live Cloud Firestore:** Connects securely to production, staging, or development instances using Google Service Account credentials, keeping configurations local and context-isolated.
+*   **Triple-Pane Workspace:**
     *   **Collections Navigation:** Real-time schema lists with fuzzy-search filtering and standard sidebar accent pills.
     *   **Documents Explorer:** Displays document collections and document paths with click-to-copy IDs.
     *   **Data Analyzer:** Premium collapsible JSON tree viewer with developer-themed syntax highlighting. Correctly serializes complex Firestore types like `Timestamp`, `GeoPoint`, and `DocumentReference`.
