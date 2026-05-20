@@ -58,20 +58,24 @@ The app window will automatically open, connected to the live compiler.
 
 Production binaries are packaged using **`electron-builder`**. All generated installer files are output directly to `apps/desktop/dist-packaged/`.
 
+> [!WARNING]
+> **Do not run `electron-builder` directly via `exec`.**
+> Running `electron-builder` without first building the static resources will result in an incomplete package (missing the compiled `dist/renderer` folder), which causes the application to launch with a blank screen. Always use the pre-configured `dist` scripts shown below to ensure the frontend assets and main process scripts are properly built before packaging.
+
 To compile the monorepo and package the application for your **current host system**, run the following command from the root directory:
 ```bash
-pnpm build && pnpm --filter firestore-exporter-desktop dist
+pnpm --filter firestore-exporter-desktop dist
 ```
 
 ### 🖥️ Targeting Specific Platforms
 
-You can target specific platforms using Electron-builder configurations:
+You can target specific platforms using pre-configured workspace distribution scripts:
 
 #### 1. Windows (`.exe` NSIS Installer)
 Build a fully bundled Windows installer:
 ```bash
 # Run on a Windows machine
-pnpm --filter firestore-exporter-desktop exec electron-builder --win
+pnpm --filter firestore-exporter-desktop dist --win
 ```
 *   **Output:** `apps/desktop/dist-packaged/Firestore Exporter Setup [version].exe`
 
@@ -79,7 +83,7 @@ pnpm --filter firestore-exporter-desktop exec electron-builder --win
 Build a macOS package bundle:
 ```bash
 # Run on a macOS machine
-pnpm --filter firestore-exporter-desktop exec electron-builder --mac
+pnpm --filter firestore-exporter-desktop dist --mac
 ```
 *   **Output:** `apps/desktop/dist-packaged/Firestore Exporter-[version].dmg`
 *   *Note: Creating macOS installer files requires a macOS machine due to system-level codesign and toolchain requirements.*
@@ -88,7 +92,7 @@ pnpm --filter firestore-exporter-desktop exec electron-builder --mac
 Build a portable Linux app:
 ```bash
 # Run on Linux or WSL
-pnpm --filter firestore-exporter-desktop exec electron-builder --linux
+pnpm --filter firestore-exporter-desktop dist --linux
 ```
 *   **Output:** `apps/desktop/dist-packaged/Firestore_Exporter_[version].AppImage`
 
