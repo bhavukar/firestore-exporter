@@ -6,9 +6,10 @@
     "dev:renderer": "vite",
     "dev:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --watch --onSuccess \"node scripts/dev-electron.js\"",
     "dev": "concurrently -k -s first \"pnpm dev:renderer\" \"pnpm dev:main\"",
+    "build:deps": "pnpm --filter @firestore-exporter/core build && pnpm --filter @firestore-exporter/ui build",
     "build:renderer": "vite build",
     "build:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --minify",
-    "build": "pnpm build:renderer && pnpm build:main",
+    "build": "pnpm build:deps && pnpm build:renderer && pnpm build:main",
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
@@ -53,4 +54,3 @@
     }
   }
 }
-
