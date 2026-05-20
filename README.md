@@ -102,16 +102,35 @@ pnpm --filter firestore-exporter-desktop dist --linux
 
 ---
 
-## ☁️ Uploading to GitHub Releases
+## ☁️ Automated GitHub Releases
 
-To share your compiled executables on GitHub:
+Desktop installers are built by GitHub Actions from `.github/workflows/desktop-release.yml`.
 
-1.  **Run the production builds** on Windows, Mac, and Linux machines to generate the respective `.exe`, `.dmg`, and `.AppImage` files.
-2.  Go to your GitHub Repository page.
-3.  Click on **Releases** -> **Draft a new release**.
-4.  Choose a tag version (e.g., `v1.0.0`) and title.
-5.  Drag and drop the packaged files from `apps/desktop/dist-packaged/`:
-    *   `Firestore Exporter Setup 1.0.0.exe`
-    *   `Firestore Exporter-1.0.0.dmg`
-    *   `Firestore_Exporter_1.0.0.AppImage`
-6.  Click **Publish release**! Your users can now download and run the native apps on any platform.
+### Stable version releases
+
+Create and push a version tag to build macOS, Windows, and Linux installers and attach them to a GitHub Release:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The workflow builds these release assets on native runners:
+
+* `Firestore Exporter-[version].dmg`
+* `Firestore Exporter Setup [version].exe`
+* `Firestore_Exporter_[version].AppImage`
+
+### Branch snapshot releases
+
+When a branch is created, the workflow also builds a prerelease snapshot. Snapshot releases use generated tags like:
+
+```text
+snapshot-feature-name-a1b2c3d
+```
+
+Use these for testing branch builds. Stable public releases should still be cut from version tags like `v1.0.1`.
+
+### Manual rebuilds
+
+You can also run **Desktop Release Builds** from the GitHub Actions tab with `workflow_dispatch`. Provide a `ref` and, if you want to replace assets on an existing release, provide that release tag.

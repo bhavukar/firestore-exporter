@@ -1,0 +1,236 @@
+name: Desktop Release Builds
+
+on:
+  create:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or SHA to build. Defaults to the current workflow ref.
+        required: false
+      release_tag:
+        description: Existing or new release tag. Defaults to the selected tag, or a branch snapshot tag.
+        required: false
+      prerelease:
+        description: Mark the release as a prerelease.
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.event_name }}-${{ github.event.ref || github.ref_name || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      checkout_ref: ${{ steps.metadata.outputs.checkout_ref }}
+      release_tag: ${{ steps.metadata.outputs.release_tag }}
+      release_title: ${{ steps.metadata.outputs.release_title }}
+      release_notes: ${{ steps.metadata.outputs.release_notes }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+      verify_tag: ${{ steps.metadata.outputs.verify_tag }}
+      target_commitish: ${{ steps.metadata.outputs.target_commitish }}
+    steps:
+      - name: Compute metadata
+        id: metadata
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.event.ref }}
+          EVENT_REF_TYPE: ${{ github.event.ref_type }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "create" ]]; then
+            checkout_ref="$EVENT_REF"
+            ref_type="$EVENT_REF_TYPE"
+          else
+            checkout_ref="${INPUT_REF:-$GITHUB_REF_NAME}"
+            ref_type="manual"
+          fi
+
+          short_sha="${GITHUB_SHA:0:7}"
+          verify_tag="false"
+
+          if [[ -n "$INPUT_RELEASE_TAG" ]]; then
+            release_tag="$INPUT_RELEASE_TAG"
+            release_title="Desktop build $INPUT_RELEASE_TAG"
+            prerelease="$INPUT_PRERELEASE"
+          elif [[ "$ref_type" == "tag" ]]; then
+            release_tag="$checkout_ref"
+            release_title="Firestore Exporter $checkout_ref"
+            prerelease="false"
+            verify_tag="true"
+          else
+            safe_ref="$(echo "$checkout_ref" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+|-+$//g')"
+            release_tag="snapshot-${safe_ref}-${short_sha}"
+            release_title="Branch snapshot: $checkout_ref"
+            prerelease="true"
+          fi
+
+          {
+            echo "checkout_ref=$checkout_ref"
+            echo "release_tag=$release_tag"
+            echo "release_title=$release_title"
+            echo "prerelease=$prerelease"
+            echo "verify_tag=$verify_tag"
+            echo "target_commitish=$GITHUB_SHA"
+            echo "release_notes<<NOTES"
+            if [[ "$ref_type" == "tag" ]]; then
+              echo "Automated desktop builds for $release_tag."
+            else
+              echo "Automated desktop snapshot for \`$checkout_ref\` at \`$GITHUB_SHA\`."
+              echo
+              echo "This prerelease is created from a branch build and is not a stable versioned release."
+            fi
+            echo "NOTES"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            target: mac
+            artifact_name: firestore-exporter-macos
+            artifact_glob: apps/desktop/dist-packaged/*.dmg
+          - name: Windows
+            os: windows-latest
+            target: win
+            artifact_name: firestore-exporter-windows
+            artifact_glob: apps/desktop/dist-packaged/*.exe
+          - name: Linux
+            os: ubuntu-latest
+            target: linux
+            artifact_name: firestore-exporter-linux
+            artifact_glob: apps/desktop/dist-packaged/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: echo "store_path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.store_path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop package
+        run: pnpm --filter firestore-exporter-desktop dist --${{ matrix.target }}
+
+      - name: Upload packaged installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+      RELEASE_TITLE: ${{ needs.prepare.outputs.release_title }}
+      RELEASE_NOTES: ${{ needs.prepare.outputs.release_notes }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      VERIFY_TAG: ${{ needs.prepare.outputs.verify_tag }}
+      TARGET_COMMITISH: ${{ needs.prepare.outputs.target_commitish }}
+    steps:
+      - name: Download packaged installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Collect release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find release-artifacts -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) -print0 |
+            while IFS= read -r -d '' asset; do
+              cp "$asset" release-assets/
+            done
+
+          asset_count="$(find release-assets -type f | wc -l | tr -d ' ')"
+          if [[ "$asset_count" -ne 3 ]]; then
+            echo "Expected 3 release assets, found $asset_count"
+            find release-assets -maxdepth 1 -type f -print
+            exit 1
+          fi
+
+          ls -lah release-assets
+
+      - name: Create or update release
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-assets/*)
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            exit 0
+          fi
+
+          args=(
+            release create "$RELEASE_TAG"
+            "${assets[@]}"
+            --title "$RELEASE_TITLE"
+            --notes "$RELEASE_NOTES"
+          )
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease --latest=false)
+          else
+            args+=(--generate-notes)
+          fi
+
+          if [[ "$VERIFY_TAG" == "true" ]]; then
+            args+=(--verify-tag)
+          else
+            args+=(--target "$TARGET_COMMITISH")
+          fi
+
+          gh "${args[@]}"
