@@ -147,8 +147,15 @@ const JSONNode: React.FC<JSONNodeProps> = ({ name, value, isLast = true }) => {
 
 export default function App() {
   const [screen, setScreen] = useState<'gateway' | 'explorer'>('gateway');
+  const [gatewayMode, setGatewayMode] = useState<'local' | 'live'>('local');
   const [host, setHost] = useState('127.0.0.1:8080');
   const [projectId, setProjectId] = useState('demo-project');
+  const [liveConfig, setLiveConfig] = useState('');
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
+  
+  const [activeSession, setActiveSession] = useState<{ mode: 'local'|'live', host: string, project: string }>({
+    mode: 'local', host: '127.0.0.1:8080', project: 'demo-project'
+  });
   
   // States
   const [connecting, setConnecting] = useState(false);
@@ -188,13 +195,19 @@ export default function App() {
   }, [searchQuery, collections]);
 
   const addToast = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString();
     const newToast: Toast = {
-      id: Math.random().toString(),
+      id,
       type,
       title,
       message
     };
     setToasts((prev) => [...prev, newToast]);
+    
+    // Auto-dismiss after 4 seconds
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
   };
 
   const removeToast = (id: string) => {
@@ -224,23 +237,44 @@ export default function App() {
   // EMULATOR CORE CONNECTION
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!host.trim()) {
+    if (gatewayMode === 'local' && !host.trim()) {
       addToast('Missing Fields', 'Emulator host cannot be empty.', 'error');
+      return;
+    }
+    if (gatewayMode === 'live' && !liveConfig.trim()) {
+      addToast('Missing Fields', 'Service Account JSON cannot be empty.', 'error');
       return;
     }
 
     setConnecting(true);
-    addToast('Connecting', `Pinging Firestore emulator at ${host}...`, 'info');
+    if (gatewayMode === 'local') {
+      addToast('Connecting', `Pinging Firestore emulator at ${host}...`, 'info');
+    } else {
+      addToast('Connecting', 'Initializing Firebase Admin SDK...', 'info');
+    }
 
     try {
-      const res = await window.firebaseAPI.connect(host, projectId);
+      let res;
+      let activeProj = projectId;
+      let activeHost = host;
+      
+      if (gatewayMode === 'local') {
+        res = await window.firebaseAPI.connect(host, projectId);
+      } else {
+        const configObj = JSON.parse(liveConfig);
+        activeProj = configObj.project_id || 'live-project';
+        activeHost = 'firestore.googleapis.com';
+        res = await window.firebaseAPI.connect('', activeProj, liveConfig);
+      }
       
       if (res.success) {
-        // Save successfully used host and project details to localStorage
-        localStorage.setItem('last-host', host);
-        localStorage.setItem('last-project-id', projectId);
+        if (gatewayMode === 'local') {
+          localStorage.setItem('last-host', host);
+          localStorage.setItem('last-project-id', projectId);
+        }
 
-        addToast('Connected', `Session established for project '${projectId}'.`, 'success');
+        setActiveSession({ mode: gatewayMode, host: activeHost, project: activeProj });
+        addToast('Connected', `Session established for project '${activeProj}'.`, 'success');
         
         // Fetch root collections
         const colRes = await window.firebaseAPI.listCollections();
@@ -248,17 +282,13 @@ export default function App() {
           setCollections(colRes.collections);
           setScreen('explorer');
         } else {
-          addToast('Fetch Collections Failed', colRes.error || 'Could not fetch database collections.', 'error');
+          addToast('Read Error', colRes.error || 'Failed to list collections', 'error');
         }
       } else {
-        addToast(
-          'Connection Refused', 
-          res.error || 'Emulator Not Found. Is your Firestore Emulator running?', 
-          'error'
-        );
+        addToast('Connection Failed', res.error || 'Unable to connect to database', 'error');
       }
     } catch (err: any) {
-      addToast('Fatal Error', err.message || 'An unexpected connection error occurred.', 'error');
+      addToast('Error', err.message || 'Unexpected connection error', 'error');
     } finally {
       setConnecting(false);
     }
@@ -396,26 +426,81 @@ export default function App() {
                   </div>
                 </div>
 
-                <form onSubmit={handleConnect} className="space-y-4">
-                  <Input
-                    label="Emulator Host Address"
-                    value={host}
-                    onChange={(e) => setHost(e.target.value)}
-                    placeholder="e.g. 127.0.0.1:8080"
-                    disabled={connecting || detecting}
-                    id="host-input"
-                  />
+                <div className="flex bg-[#16161c] border border-white/5 rounded-md p-1 mb-5">
+                  <button
+                    type="button"
+                    onClick={() => setGatewayMode('local')}
+                    className={`flex-1 text-[11px] font-semibold py-1.5 rounded transition-all ${
+                      gatewayMode === 'local' ? 'bg-[#0078d4] text-white shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    Local Emulator
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGatewayMode('live')}
+                    className={`flex-1 text-[11px] font-semibold py-1.5 rounded transition-all ${
+                      gatewayMode === 'live' ? 'bg-[#0078d4] text-white shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/[0.03]'
+                    }`}
+                  >
+                    Live Production
+                  </button>
+                </div>
 
-                  <Input
-                    label="Project ID"
-                    value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
-                    placeholder="e.g. demo-project"
-                    disabled={connecting || detecting}
-                    id="project-input"
-                  />
+                <form onSubmit={handleConnect} className="space-y-4">
+                  {gatewayMode === 'local' ? (
+                    <>
+                      <Input
+                        label="Emulator Host Address"
+                        value={host}
+                        onChange={(e) => setHost(e.target.value)}
+                        placeholder="e.g. 127.0.0.1:8080"
+                        disabled={connecting || detecting}
+                        id="host-input"
+                      />
+
+                      <Input
+                        label="Project ID"
+                        value={projectId}
+                        onChange={(e) => setProjectId(e.target.value)}
+                        placeholder="e.g. demo-project"
+                        disabled={connecting || detecting}
+                        id="project-input"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-1.5 mb-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Service Account Key (JSON)</label>
+                        </div>
+                        <textarea
+                          value={liveConfig}
+                          onChange={(e) => setLiveConfig(e.target.value)}
+                          placeholder='{"type": "service_account", "project_id": "...", "private_key": "..."}'
+                          disabled={connecting}
+                          className="w-full h-[120px] bg-[#111115] border border-[#2d2d30] hover:border-[#3e3e42] focus:border-[#60cdff] focus:ring-1 focus:ring-[#60cdff]/30 text-white text-[11px] font-mono rounded-md p-3 outline-none transition-all resize-none shadow-inner placeholder-neutral-700"
+                        />
+                      </div>
+                      <div className="bg-[#27c93f]/10 border border-[#27c93f]/20 p-2.5 rounded-md flex items-start gap-2 mb-2">
+                        <AlertCircle size={13} className="text-[#27c93f] mt-[1px] shrink-0" />
+                        <p className="text-[10px] text-neutral-300 leading-snug">
+                          <strong className="text-[#27c93f]">Privacy First:</strong> Service accounts are processed locally in Node.js. Keys are never transmitted or stored on any external servers.
+                        </p>
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex flex-col gap-2 pt-2">
+                    {gatewayMode === 'live' && (
+                      <button 
+                        type="button" 
+                        onClick={() => setShowHelpDialog(true)}
+                        className="text-[11px] text-[#60cdff] hover:text-white transition-colors mb-1 underline underline-offset-2 decoration-[#60cdff]/30"
+                      >
+                        How do I get my Service Account Key?
+                      </button>
+                    )}
                     <Button 
                       type="submit" 
                       variant="primary"
@@ -431,23 +516,25 @@ export default function App() {
                       )}
                     </Button>
 
-                    <Button 
-                      type="button" 
-                      variant="secondary" 
-                      onClick={handleAutoDetect}
-                      disabled={connecting || detecting}
-                      className="w-full py-1.5 text-[11px]"
-                    >
-                      {detecting ? (
-                        <>
-                          <Cpu className="animate-spin text-[#60cdff]" size={13} /> Scanning active ports...
-                        </>
-                      ) : (
-                        <>
-                          <Cpu size={13} className="text-[#60cdff]" /> Auto-Detect Emulator Port
-                        </>
-                      )}
-                    </Button>
+                    {gatewayMode === 'local' && (
+                      <Button 
+                        type="button" 
+                        variant="secondary" 
+                        onClick={handleAutoDetect}
+                        disabled={connecting || detecting}
+                        className="w-full py-1.5 text-[11px]"
+                      >
+                        {detecting ? (
+                          <>
+                            <Cpu className="animate-spin text-[#60cdff]" size={13} /> Scanning active ports...
+                          </>
+                        ) : (
+                          <>
+                            <Cpu size={13} className="text-[#60cdff]" /> Auto-Detect Emulator Port
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </form>
 
@@ -704,6 +791,36 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Help Dialog Modal */}
+      {showHelpDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#1c1c22] border border-white/10 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Database size={18} className="text-[#60cdff]" />
+              <h2 className="text-sm font-semibold text-white">How to get your Service Account Key</h2>
+            </div>
+            <div className="space-y-3 text-xs text-neutral-300 mb-6 font-sans">
+              <p>1. Open the Firebase Console and select your project.</p>
+              <p>2. Click the gear icon (⚙️) next to "Project Overview" and select <strong className="text-white font-medium">Project settings</strong>.</p>
+              <p>3. Navigate to the <strong className="text-white font-medium">Service accounts</strong> tab at the top.</p>
+              <p>4. Ensure "Firebase Admin SDK" is selected and click the <strong className="text-white font-medium">Generate new private key</strong> button.</p>
+              <p>5. Open the downloaded <code>.json</code> file, copy all of its text, and paste it here.</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setShowHelpDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" onClick={() => {
+                setShowHelpDialog(false);
+                window.open('https://console.firebase.google.com/', '_blank');
+              }}>
+                Open Firebase Console
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Modern Toast Notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} />

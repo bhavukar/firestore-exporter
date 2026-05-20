@@ -3,8 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('firebaseAPI', {
   platform: process.platform,
   ping: () => ipcRenderer.invoke('ping'),
-  connect: (host: string, projectId: string) => 
-    ipcRenderer.invoke('connect-emulator', host, projectId),
+  connect: (host: string, projectId: string, liveConfig?: string) => 
+    ipcRenderer.invoke('connect-emulator', host, projectId, liveConfig),
   listCollections: () => 
     ipcRenderer.invoke('list-collections'),
   getCollectionDocuments: (collectionId: string) => 

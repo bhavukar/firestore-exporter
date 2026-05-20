@@ -4,22 +4,32 @@ import * as fs from 'fs';
 let firestoreInstance: admin.firestore.Firestore | null = null;
 
 /**
- * Initialize and connect to the Firestore Emulator.
- * Sets the FIRESTORE_EMULATOR_HOST environment variable.
+ * Initialize and connect to the Firestore Database (Emulator or Live Production).
  */
-export async function connectToEmulator(host: string, projectId: string): Promise<boolean> {
-  const formattedHost = host.trim().replace(/^https?:\/\//, '');
-  process.env.FIRESTORE_EMULATOR_HOST = formattedHost;
-
+export async function connectToEmulator(host: string, projectId: string, liveConfig?: string): Promise<boolean> {
   try {
-    // If apps exist, clean up the active app first to allow reconnection
+    // Clean up active apps for clean reconnection
     if (admin.apps.length > 0) {
       await Promise.all(admin.apps.map(app => app?.delete().catch(() => {})));
     }
 
-    admin.initializeApp({
-      projectId: projectId.trim() || 'demo-project'
-    });
+    if (liveConfig && liveConfig.trim().length > 0) {
+      // Live Production Mode via Service Account Key
+      delete process.env.FIRESTORE_EMULATOR_HOST;
+      const serviceAccount = JSON.parse(liveConfig);
+      
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    } else {
+      // Local Emulator Mode
+      const formattedHost = host.trim().replace(/^https?:\/\//, '');
+      process.env.FIRESTORE_EMULATOR_HOST = formattedHost;
+
+      admin.initializeApp({
+        projectId: projectId.trim() || 'demo-project'
+      });
+    }
 
     firestoreInstance = admin.firestore();
 

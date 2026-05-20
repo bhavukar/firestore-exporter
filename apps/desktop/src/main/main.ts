@@ -71,9 +71,9 @@ app.on('window-all-closed', () => {
 ipcMain.handle('ping', () => 'pong');
 
 // Connect to the Firestore Emulator
-ipcMain.handle('connect-emulator', async (_, host: string, projectId: string) => {
+ipcMain.handle('connect-emulator', async (_, host: string, projectId: string, liveConfig?: string) => {
   try {
-    const success = await connectToEmulator(host, projectId);
+    const success = await connectToEmulator(host, projectId, liveConfig);
     return { success };
   } catch (error: any) {
     return { success: false, error: error.message };
