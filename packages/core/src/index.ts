@@ -1,3 +1,4 @@
+export * from './sql';
 import * as admin from 'firebase-admin';
 import * as fs from 'fs';
 
@@ -119,12 +120,45 @@ export interface FirestoreDocument {
   updateTime?: string;
 }
 
+export interface QueryConfig {
+  field: string;
+  operator: '==' | '<' | '<=' | '>' | '>=' | 'starts-with';
+  value: any;
+}
+
+export interface SortConfig {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
 /**
- * Fetches the first N documents of a collection.
+ * Fetches the first N documents of a collection, optionally filtering and sorting.
  */
-export async function getCollectionDocuments(collectionId: string, limit: number = 50): Promise<FirestoreDocument[]> {
+export async function getCollectionDocuments(
+  collectionId: string, 
+  limitNum: number = 50,
+  queries: QueryConfig[] = [],
+  sorts: SortConfig[] = []
+): Promise<FirestoreDocument[]> {
   const db = getFirestore();
-  const snapshot = await db.collection(collectionId).limit(limit).get();
+  let query: admin.firestore.Query = db.collection(collectionId);
+
+  // Apply Where clauses
+  for (const q of queries) {
+    if (q.operator === 'starts-with') {
+      // Native range query conversion for prefix matching
+      query = query.where(q.field, '>=', q.value).where(q.field, '<', q.value + '\uf8ff');
+    } else {
+      query = query.where(q.field, q.operator, q.value);
+    }
+  }
+
+  // Apply OrderBy clauses
+  for (const s of sorts) {
+    query = query.orderBy(s.field, s.direction);
+  }
+
+  const snapshot = await query.limit(limitNum).get();
   
   return snapshot.docs.map(doc => ({
     id: doc.id,

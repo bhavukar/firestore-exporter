@@ -7,10 +7,14 @@ contextBridge.exposeInMainWorld('firebaseAPI', {
     ipcRenderer.invoke('connect-emulator', host, projectId, liveConfig),
   listCollections: () => 
     ipcRenderer.invoke('list-collections'),
-  getCollectionDocuments: (collectionId: string) => 
-    ipcRenderer.invoke('get-documents', collectionId),
+  getCollectionDocuments: (collectionId: string, limitNum: number = 50, queries: any[] = [], sorts: any[] = []) => 
+    ipcRenderer.invoke('get-documents', collectionId, limitNum, queries, sorts),
   exportDatabase: (collectionId?: string, docId?: string) => 
     ipcRenderer.invoke('export-database', collectionId, docId),
+  inferSchema: (collectionId: string) => 
+    ipcRenderer.invoke('infer-schema', collectionId),
+  generateSql: (schema: any) => 
+    ipcRenderer.invoke('generate-sql', schema),
   autoDetect: () => 
     ipcRenderer.invoke('auto-detect')
 });

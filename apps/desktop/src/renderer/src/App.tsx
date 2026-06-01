@@ -6,6 +6,8 @@ import {
   ToastContainer, 
   Toast 
 } from '@firestore-exporter/ui';
+import Editor from '@monaco-editor/react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { 
   Search, 
   Download, 
@@ -29,8 +31,10 @@ interface WindowFirebaseAPI {
   ping: () => Promise<string>;
   connect: (host: string, projectId: string) => Promise<{ success: boolean; error?: string }>;
   listCollections: () => Promise<{ success: boolean; collections?: string[]; error?: string }>;
-  getCollectionDocuments: (collectionId: string) => Promise<{ success: boolean; documents?: any[]; error?: string }>;
+  getCollectionDocuments: (collectionId: string, limitNum?: number, queries?: any[], sorts?: any[]) => Promise<{ success: boolean; documents?: any[]; error?: string }>;
   exportDatabase: (collectionId?: string, docId?: string) => Promise<{ success: boolean; path?: string; cancelled?: boolean; error?: string }>;
+  inferSchema: (collectionId: string) => Promise<{ success: boolean; schema?: any; error?: string }>;
+  generateSql: (schema: any) => Promise<{ success: boolean; sql?: string; error?: string }>;
   autoDetect: () => Promise<{ success: boolean; host?: string; error?: string }>;
 }
 
@@ -40,7 +44,6 @@ declare global {
   }
 }
 
-// --- COLOR-CODED RENDER FOR INDIVIDUAL VALUES (Fluent/VS Code styled) ---
 const renderPrimitiveValue = (val: any) => {
   if (val === null) return <span className="text-[#569cd6] font-mono select-all">null</span>;
   if (val === undefined) return <span className="text-[#727278] font-mono select-all">undefined</span>;
@@ -52,7 +55,18 @@ const renderPrimitiveValue = (val: any) => {
     return <span className="text-[#b5cea8] font-mono select-all">{val}</span>;
   }
   if (typeof val === 'string') {
-    return <span className="text-[#ce9178] font-mono select-all">"{val}"</span>;
+    const isImage = (val.startsWith('http') && val.match(/\.(jpeg|jpg|gif|png|svg|webp)$/i)) || val.startsWith('gs://');
+    return (
+      <div className="flex flex-col gap-1 items-start">
+        <span className="text-[#ce9178] font-mono select-all">"{val}"</span>
+        {isImage && (
+          <div className="bg-[#1a1a20] p-1 border border-white/10 rounded-md mt-1">
+            <img src={val.startsWith('gs://') ? 'https://firebase.google.com/downloads/brand-guidelines/PNG/logo-logomark.png' : val} alt="Preview" className="h-10 w-auto rounded object-contain opacity-80" />
+            {val.startsWith('gs://') && <span className="text-[8px] text-neutral-500 block text-center mt-0.5">Cloud Storage</span>}
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Handle serialized Firestore types
@@ -66,9 +80,9 @@ const renderPrimitiveValue = (val: any) => {
     }
     if (val._type === 'GeoPoint') {
       return (
-        <span className="text-[#c586c0] font-mono text-[10px] bg-[#1a1a20] border border-white/5 px-2 py-0.5 rounded">
-          📍 GeoPoint({val.latitude}°, {val.longitude}°)
-        </span>
+        <a href={`https://www.google.com/maps/search/?api=1&query=${val.latitude},${val.longitude}`} target="_blank" rel="noreferrer" className="text-[#c586c0] font-mono text-[10px] bg-[#1a1a20] border border-[#c586c0]/20 hover:bg-[#c586c0]/10 transition-colors px-2 py-0.5 rounded inline-flex items-center gap-1">
+          📍 GeoPoint({val.latitude}°, {val.longitude}°) <span className="text-[8px] underline">Map</span>
+        </a>
       );
     }
     if (val._type === 'DocumentReference') {
@@ -145,6 +159,73 @@ const JSONNode: React.FC<JSONNodeProps> = ({ name, value, isLast = true }) => {
   );
 };
 
+// --- VIRTUALIZED TABLE VIEW ---
+const VirtualizedTable = ({ data }: { data: any[] }) => {
+  const parentRef = React.useRef<HTMLDivElement>(null);
+  
+  if (!data || data.length === 0) {
+    return <div className="p-8 text-center text-neutral-500 font-sans text-xs">No data to display in table.</div>;
+  }
+  
+  // Extract columns dynamically from documents
+  const cols = new Set<string>();
+  cols.add('id');
+  data.slice(0, 100).forEach(d => {
+    if (d.data) Object.keys(d.data).forEach(k => cols.add(k));
+  });
+  const columns = Array.from(cols);
+
+  const rowVirtualizer = useVirtualizer({
+    count: data.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 36,
+  });
+
+  return (
+    <div ref={parentRef} className="h-full overflow-auto bg-[#0f0f12]">
+      <div style={{ height: `${rowVirtualizer.getTotalSize() + 36}px`, width: `${columns.length * 200}px`, position: 'relative' }}>
+        {/* Header */}
+        <div className="flex border-b border-white/10 sticky top-0 bg-[#1c1c22] z-10 h-[36px]">
+          {columns.map(col => (
+            <div key={col} className="w-[200px] shrink-0 px-3 py-2 text-xs font-semibold text-neutral-400 border-r border-white/5 truncate">
+              {col}
+            </div>
+          ))}
+        </div>
+        {/* Rows */}
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const doc = data[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.key}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: `${virtualRow.size}px`,
+                transform: `translateY(${virtualRow.start + 36}px)`,
+              }}
+              className="flex border-b border-white/[0.02] hover:bg-white/[0.02]"
+            >
+              {columns.map(col => (
+                <div key={col} className="w-[200px] shrink-0 px-3 py-2 text-[10px] font-mono text-neutral-300 border-r border-white/5 truncate flex items-center">
+                  {col === 'id' ? (
+                    <span className="text-[#60cdff]">{doc.id}</span>
+                  ) : (
+                    <span className="truncate">{typeof doc.data?.[col] === 'object' ? JSON.stringify(doc.data?.[col]) : String(doc.data?.[col] ?? '')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+
 export default function App() {
   const [screen, setScreen] = useState<'gateway' | 'explorer'>('gateway');
   const [gatewayMode, setGatewayMode] = useState<'local' | 'live'>('local');
@@ -171,6 +252,19 @@ export default function App() {
   
   const [copiedDocId, setCopiedDocId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Advanced Feature States
+  const [activeTab, setActiveTab] = useState<'tree' | 'table' | 'json'>('tree');
+  const [queries, setQueries] = useState<{ field: string; operator: string; value: string }[]>([]);
+  const [sorts, setSorts] = useState<{ field: string; direction: 'asc' | 'desc' }[]>([]);
+  const [scriptingEnabled, setScriptingEnabled] = useState(false);
+  const [scriptCode, setScriptCode] = useState('// Write JS to map/filter data array\nreturn data;');
+  const [readOnlyMode, setReadOnlyMode] = useState(true);
+
+  // SQL Migration States
+  const [showSqlModal, setShowSqlModal] = useState(false);
+  const [inferredSchema, setInferredSchema] = useState<any>(null);
+  const [generatedSql, setGeneratedSql] = useState<string>('');
 
   // Get active platform from IPC bridge ('win32', 'darwin', 'linux')
   const platform = window.firebaseAPI?.platform || 'win32';
@@ -310,16 +404,22 @@ export default function App() {
     }
   };
 
-  // FETCH COLLECTION DOCUMENTS
-  const handleSelectCollection = async (colId: string) => {
-    setSelectedCollection(colId);
-    setSelectedDocument(null);
+  const executeQuery = async (colId: string) => {
     setLoadingDocs(true);
-
     try {
-      const docRes = await window.firebaseAPI.getCollectionDocuments(colId);
+      const docRes = await window.firebaseAPI.getCollectionDocuments(colId, 50, queries, sorts);
       if (docRes.success && docRes.documents) {
-        setDocuments(docRes.documents);
+        let finalDocs = docRes.documents;
+        if (scriptingEnabled && scriptCode.trim()) {
+           try {
+             // Basic isolated transform (warning: eval/Function used purely for local client transformation as requested)
+             const transformFn = new Function('data', scriptCode);
+             finalDocs = transformFn(finalDocs);
+           } catch (e: any) {
+             addToast('Script Error', e.message, 'error');
+           }
+        }
+        setDocuments(finalDocs);
       } else {
         addToast('Fetch Documents Failed', docRes.error || 'Could not fetch documents.', 'error');
       }
@@ -329,6 +429,37 @@ export default function App() {
       setLoadingDocs(false);
     }
   };
+
+  // SQL MIGRATION INFERENCE
+  const handleOpenSqlMigration = async () => {
+    if (!selectedCollection) return;
+    addToast('Inferring Schema', 'Analyzing documents for SQL schema...', 'info');
+    setShowSqlModal(true);
+    setInferredSchema(null);
+    setGeneratedSql('');
+    try {
+      const res = await window.firebaseAPI.inferSchema(selectedCollection);
+      if (res.success && res.schema) {
+        setInferredSchema(res.schema);
+        const sqlRes = await window.firebaseAPI.generateSql(res.schema);
+        if (sqlRes.success && sqlRes.sql) {
+          setGeneratedSql(sqlRes.sql);
+        }
+      } else {
+        addToast('Schema Error', res.error || 'Failed to infer schema.', 'error');
+      }
+    } catch (err: any) {
+      addToast('Schema Error', err.message, 'error');
+    }
+  };
+
+  // FETCH COLLECTION DOCUMENTS
+  const handleSelectCollection = async (colId: string) => {
+    setSelectedCollection(colId);
+    setSelectedDocument(null);
+    await executeQuery(colId);
+  };
+
 
   // EXPORT PROCESS (ENTIRE DB, COLLECTION, DOCUMENT)
   const handleExport = async (scope: 'db' | 'collection' | 'document') => {
@@ -386,15 +517,15 @@ export default function App() {
           </div>
           
           {screen === 'explorer' && (
-            <div className="flex items-center gap-3 text-[10px] bg-white/[0.04] px-3 py-0.5 rounded-full border border-white/[0.03]">
-              <span className="flex items-center gap-1.5 text-[#60cdff]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#60cdff] shadow-[0_0_8px_rgba(96,205,255,0.8)]" />
-                Active
+            <div className={`flex items-center gap-3 text-[10px] px-3 py-0.5 rounded-full border ${activeSession.mode === 'live' ? 'bg-red-500/10 border-red-500/30 text-red-100' : 'bg-[#60cdff]/10 border-[#60cdff]/30 text-[#e0f4ff]'}`}>
+              <span className={`flex items-center gap-1.5 font-bold tracking-wider uppercase ${activeSession.mode === 'live' ? 'text-red-400' : 'text-[#60cdff]'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${activeSession.mode === 'live' ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.8)]' : 'bg-[#60cdff] shadow-[0_0_8px_rgba(96,205,255,0.8)]'}`} />
+                {activeSession.mode === 'live' ? 'PRODUCTION' : 'LOCAL EMULATOR'}
               </span>
-              <span className="text-neutral-600">|</span>
-              <span className="text-neutral-300 font-mono text-[9px]">{host}</span>
-              <span className="text-neutral-600">|</span>
-              <span className="text-neutral-400 text-[9px]">{projectId}</span>
+              <span className="opacity-40">|</span>
+              <span className="font-mono text-[9px] opacity-80">{activeSession.host}</span>
+              <span className="opacity-40">|</span>
+              <span className="font-mono text-[9px] opacity-80">{activeSession.project}</span>
             </div>
           )}
         </header>
@@ -643,147 +774,247 @@ export default function App() {
               </div>
             </div>
 
-            {/* Middle Panel: Documents List */}
-            <div className="w-[300px] shrink-0 border-r border-white/5 bg-[#16161c] flex flex-col">
-              <div className="h-[44px] shrink-0 border-b border-white/5 px-3 flex items-center justify-between bg-[#202026]/40 select-none">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-neutral-400">
-                  Documents ({documents.length})
-                </span>
-                {selectedCollection && (
-                  <button 
-                    onClick={() => handleExport('collection')}
-                    className="p-1.5 bg-[#2d2d30] border border-[#3e3e42] hover:bg-[#353538] text-[#f3f3f5] rounded-[4px] flex items-center gap-1 px-2.5 py-1 text-[10px] font-sans font-medium transition-all shadow-sm"
-                  >
-                    <Download size={11} className="text-[#60cdff]" /> Export Collection
-                  </button>
-                )}
+            {/* --- ADVANCED WORKSPACE AREA --- */}
+            <div className="flex-1 flex flex-col overflow-hidden bg-[#121216]">
+              
+              {/* ADVANCED QUERY & SCRIPTING PANEL */}
+              <div className="h-48 border-b border-white/5 bg-[#1a1a20] flex shrink-0">
+                {/* Query Builder */}
+                <div className="flex-1 border-r border-white/5 p-4 overflow-y-auto flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">Query Builder</h3>
+                    <button onClick={() => setQueries([...queries, { field: '', operator: '==', value: '' }])} className="text-[#60cdff] text-[10px] hover:underline font-semibold">+ Add Filter</button>
+                  </div>
+                  
+                  <div className="flex-1 space-y-2">
+                    {queries.length === 0 ? (
+                      <div className="text-center text-[10px] text-neutral-600 italic py-4">No filters applied. Fetching all documents.</div>
+                    ) : (
+                      queries.map((q, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input type="text" placeholder="Field" value={q.field} onChange={(e) => { const n = [...queries]; n[i].field = e.target.value; setQueries(n); }} className="bg-[#0f0f12] text-xs text-white border border-white/10 rounded px-2 py-1 w-32 outline-none focus:border-[#60cdff]" />
+                          <select value={q.operator} onChange={(e) => { const n = [...queries]; n[i].operator = e.target.value; setQueries(n); }} className="bg-[#0f0f12] text-xs text-white border border-white/10 rounded px-2 py-1 outline-none focus:border-[#60cdff]">
+                            <option value="==">==</option>
+                            <option value="<">&lt;</option>
+                            <option value="<=">&lt;=</option>
+                            <option value=">">&gt;</option>
+                            <option value=">=">&gt;=</option>
+                            <option value="starts-with">starts-with</option>
+                          </select>
+                          <input type="text" placeholder="Value" value={q.value} onChange={(e) => { const n = [...queries]; n[i].value = e.target.value; setQueries(n); }} className="bg-[#0f0f12] text-xs text-white border border-white/10 rounded px-2 py-1 flex-1 outline-none focus:border-[#60cdff]" />
+                          <button onClick={() => { const n = [...queries]; n.splice(i, 1); setQueries(n); }} className="text-red-400 hover:text-red-300 p-1">✕</button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Scripting Shell */}
+                <div className="w-[450px] flex flex-col shrink-0">
+                  <div className="px-4 py-2 border-b border-white/5 flex items-center justify-between bg-[#1f1f26]">
+                    <span className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">Scripting Shell (JS)</span>
+                    <label className="text-[10px] flex items-center gap-2 cursor-pointer text-neutral-300 font-semibold hover:text-white">
+                      <input type="checkbox" checked={scriptingEnabled} onChange={e => setScriptingEnabled(e.target.checked)} className="accent-[#60cdff]" />
+                      Enable Map/Filter
+                    </label>
+                  </div>
+                  <div className="flex-1 relative">
+                    {!scriptingEnabled && <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center backdrop-blur-[1px] text-xs text-neutral-500 font-semibold">Scripting Disabled</div>}
+                    <Editor 
+                      height="100%" 
+                      defaultLanguage="javascript" 
+                      theme="vs-dark" 
+                      value={scriptCode} 
+                      onChange={(v) => setScriptCode(v || '')} 
+                      options={{ minimap: { enabled: false }, fontSize: 11, padding: { top: 8 } }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2.5">
-                {!selectedCollection ? (
-                  <div className="h-full flex flex-col items-center justify-center p-6 text-center select-none opacity-30">
-                    <Database size={20} className="text-neutral-500 mb-1.5" />
-                    <p className="text-[9px] uppercase font-semibold tracking-wider text-neutral-400">
-                      Select Collection
-                    </p>
-                  </div>
-                ) : loadingDocs ? (
-                  <div className="p-6 text-center text-xs text-neutral-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="animate-spin text-[#60cdff]" size={12} /> Synchronizing...
-                  </div>
-                ) : documents.length === 0 ? (
-                  <div className="p-5 text-center border border-dashed border-white/5 rounded-lg m-1.5 bg-white/[0.01]">
-                    <p className="text-[10px] text-neutral-500">
-                      No documents present.
-                    </p>
+              {/* TABS HEADER */}
+              <div className="h-11 border-b border-white/5 flex items-center px-4 shrink-0 bg-[#202026]">
+                <div className="flex gap-1 p-1 bg-[#121216] rounded-md border border-white/5">
+                  <button onClick={() => setActiveTab('tree')} className={`px-4 py-1 text-[11px] font-semibold rounded transition-colors ${activeTab === 'tree' ? 'bg-[#303036] text-white shadow-sm' : 'text-neutral-500 hover:text-white hover:bg-white/[0.02]'}`}>Tree View</button>
+                  <button onClick={() => setActiveTab('table')} className={`px-4 py-1 text-[11px] font-semibold rounded transition-colors ${activeTab === 'table' ? 'bg-[#303036] text-white shadow-sm' : 'text-neutral-500 hover:text-white hover:bg-white/[0.02]'}`}>Table View</button>
+                  <button onClick={() => setActiveTab('json')} className={`px-4 py-1 text-[11px] font-semibold rounded transition-colors ${activeTab === 'json' ? 'bg-[#303036] text-white shadow-sm' : 'text-neutral-500 hover:text-white hover:bg-white/[0.02]'}`}>Raw JSON</button>
+                </div>
+                
+                <div className="ml-auto flex items-center gap-5">
+                  <label className={`text-[11px] flex items-center gap-2 cursor-pointer font-semibold transition-colors ${readOnlyMode ? 'text-emerald-400' : 'text-orange-400'}`}>
+                    <input type="checkbox" checked={readOnlyMode} onChange={(e) => setReadOnlyMode(e.target.checked)} className="accent-current" />
+                    {readOnlyMode ? 'Read-Only Mode' : 'Write Enabled'}
+                  </label>
+                  <Button size="sm" variant="primary" onClick={() => executeQuery(selectedCollection!)} disabled={!selectedCollection} className="text-[11px] px-4 py-1.5 font-bold shadow-md">
+                    ▶ Run Query
+                  </Button>
+                </div>
+              </div>
+
+              {/* MAIN CONTENT AREA */}
+              <div className="flex-1 flex overflow-hidden">
+                {activeTab === 'table' ? (
+                  <div className="flex-1 w-full relative">
+                    {loadingDocs ? (
+                       <div className="absolute inset-0 flex items-center justify-center bg-[#0f0f12] text-neutral-400 gap-2 text-xs">
+                          <RefreshCw className="animate-spin text-[#60cdff]" size={14} /> Synchronizing Table...
+                       </div>
+                    ) : (
+                       <VirtualizedTable data={documents} />
+                    )}
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {documents.map((doc) => {
-                      const isActive = selectedDocument?.id === doc.id;
-                      return (
-                        <button
-                          key={doc.id}
-                          onClick={() => setSelectedDocument(doc)}
-                          className={`w-full text-left p-3 rounded-lg border transition-all duration-150 relative ${
-                            isActive
-                              ? 'bg-[#202026] text-white border-[#60cdff]/30 shadow-md'
-                              : 'bg-white/[0.01] hover:bg-white/[0.02] text-neutral-300 border-white/[0.03] hover:border-white/10 shadow-sm'
-                          }`}
-                        >
-                          {isActive && (
-                            <div className="absolute left-0 top-2 bottom-2 w-[2.5px] rounded-full bg-[#60cdff]" />
-                          )}
-                          <div className="flex items-center justify-between mb-1 select-none pl-1">
-                            <span className="font-medium text-xs text-neutral-100 truncate mr-2 block select-all font-mono">
-                              {doc.id}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCopyId(doc.id);
-                              }}
-                              className="text-neutral-500 hover:text-white p-0.5 rounded transition-colors"
-                              title="Copy Document ID"
+                  <>
+                    {/* Middle Panel: Documents List */}
+                    <div className="w-[300px] shrink-0 border-r border-white/5 bg-[#16161c] flex flex-col">
+                      <div className="h-[40px] shrink-0 border-b border-white/5 px-3 flex items-center justify-between bg-[#1a1a20] select-none">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                          Documents ({documents.length})
+                        </span>
+                        {selectedCollection && (
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={handleOpenSqlMigration}
+                              className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/20 text-indigo-300 rounded-[4px] flex items-center gap-1 px-2 py-1 text-[10px] font-sans font-semibold transition-all shadow-sm"
                             >
-                              {copiedDocId === doc.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                              <Database size={11} className="text-indigo-400" /> SQL Blueprint
+                            </button>
+                            <button 
+                              onClick={() => handleExport('collection')}
+                              className="p-1.5 bg-[#2d2d30] border border-[#3e3e42] hover:bg-[#353538] text-[#f3f3f5] rounded-[4px] flex items-center gap-1 px-2.5 py-1 text-[10px] font-sans font-medium transition-all shadow-sm"
+                            >
+                              <Download size={11} className="text-[#60cdff]" /> Export
                             </button>
                           </div>
-                          <span className="text-[9px] text-neutral-500 block truncate font-mono select-all pl-1">
-                            {doc.path}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Pane: Document Previewer */}
-            <div className="flex-1 bg-[#121216] flex flex-col overflow-hidden">
-              <div className="h-[44px] shrink-0 border-b border-white/5 px-4 flex items-center justify-between bg-[#202026]/40 select-none">
-                <span className="text-[9px] font-semibold uppercase tracking-wider text-neutral-400">
-                  Document Analyzer
-                </span>
-                {selectedDocument && (
-                  <button 
-                    onClick={() => handleExport('document')}
-                    className="bg-[#0078d4] hover:bg-[#106ebe] text-white rounded-[4px] flex items-center gap-1.5 px-3 py-1 text-[10px] font-sans font-medium transition-all shadow-sm active:scale-[0.98]"
-                  >
-                    <Download size={11} /> Export Document
-                  </button>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-auto p-5 bg-[#0f0f12] select-text">
-                {!selectedDocument ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center select-none opacity-20">
-                    <FileCode size={22} className="text-neutral-500 mb-1.5" />
-                    <p className="text-[9px] uppercase font-semibold tracking-wider text-neutral-400">
-                      Select Document
-                    </p>
-                  </div>
-                ) : (
-                  <div className="border border-white/[0.03] bg-[#1c1c22]/30 p-5 rounded-xl shadow-xl relative overflow-hidden backdrop-blur-sm">
-                    
-                    {/* Document Header */}
-                    <div className="border-b border-white/[0.04] pb-3 mb-4 flex items-center justify-between text-xs font-sans select-none">
-                      <div>
-                        <span className="text-neutral-500 uppercase text-[8px] font-semibold tracking-wider block">Document Path</span>
-                        <span className="text-neutral-200 font-semibold font-mono text-[10px]">{selectedDocument.path}</span>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <span className="text-neutral-500 uppercase text-[8px] font-semibold tracking-wider block">Last Synced</span>
-                        <span className="text-[#60cdff] font-semibold text-[9px]">
-                          {selectedDocument.updateTime ? new Date(selectedDocument.updateTime).toLocaleTimeString() : 'N/A'}
-                        </span>
+
+                      <div className="flex-1 overflow-y-auto p-2.5">
+                        {!selectedCollection ? (
+                          <div className="h-full flex flex-col items-center justify-center p-6 text-center select-none opacity-30">
+                            <Database size={20} className="text-neutral-500 mb-1.5" />
+                            <p className="text-[9px] uppercase font-semibold tracking-wider text-neutral-400">
+                              Select Collection
+                            </p>
+                          </div>
+                        ) : loadingDocs ? (
+                          <div className="p-6 text-center text-xs text-neutral-400 flex items-center justify-center gap-2">
+                            <RefreshCw className="animate-spin text-[#60cdff]" size={12} /> Synchronizing...
+                          </div>
+                        ) : documents.length === 0 ? (
+                          <div className="p-5 text-center border border-dashed border-white/5 rounded-lg m-1.5 bg-white/[0.01]">
+                            <p className="text-[10px] text-neutral-500">
+                              No documents match query.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {documents.map((doc) => {
+                              const isActive = selectedDocument?.id === doc.id;
+                              return (
+                                <button
+                                  key={doc.id}
+                                  onClick={() => setSelectedDocument(doc)}
+                                  className={`w-full text-left p-3 rounded-lg border transition-all duration-150 relative ${
+                                    isActive
+                                      ? 'bg-[#202026] text-white border-[#60cdff]/30 shadow-md'
+                                      : 'bg-white/[0.01] hover:bg-white/[0.02] text-neutral-300 border-white/[0.03] hover:border-white/10 shadow-sm'
+                                  }`}
+                                >
+                                  {isActive && (
+                                    <div className="absolute left-0 top-2 bottom-2 w-[2.5px] rounded-full bg-[#60cdff]" />
+                                  )}
+                                  <div className="flex items-center justify-between mb-1 select-none pl-1">
+                                    <span className="font-medium text-xs text-neutral-100 truncate mr-2 block select-all font-mono">
+                                      {doc.id}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCopyId(doc.id);
+                                      }}
+                                      className="text-neutral-500 hover:text-white p-0.5 rounded transition-colors"
+                                      title="Copy Document ID"
+                                    >
+                                      {copiedDocId === doc.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                    </button>
+                                  </div>
+                                  <span className="text-[9px] text-neutral-500 block truncate font-mono select-all pl-1">
+                                    {doc.path}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Interactive Collapsible JSON Viewer */}
-                    <div className="space-y-0.5 mt-2 font-mono">
-                      <div className="text-[#727278] text-xs">{'{'}</div>
-                      
-                      {Object.keys(selectedDocument.data).length === 0 ? (
-                        <div className="pl-4 text-neutral-500 italic text-[11px] font-sans">
-                          // empty document fields
+                    {/* Right Pane: Document Previewer */}
+                    <div className="flex-1 bg-[#0f0f12] flex flex-col overflow-hidden relative">
+                      {!selectedDocument ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center select-none opacity-20">
+                          <FileCode size={22} className="text-neutral-500 mb-1.5" />
+                          <p className="text-[9px] uppercase font-semibold tracking-wider text-neutral-400">
+                            Select Document to Inspect
+                          </p>
                         </div>
                       ) : (
-                        Object.keys(selectedDocument.data).map((key, idx, arr) => (
-                           <JSONNode
-                            key={key}
-                            name={key}
-                            value={selectedDocument.data[key]}
-                            isLast={idx === arr.length - 1}
-                          />
-                        ))
+                        <>
+                          <div className="absolute top-4 right-4 z-10 flex gap-2">
+                             <button 
+                              onClick={() => handleExport('document')}
+                              className="bg-[#0078d4]/80 hover:bg-[#106ebe] text-white rounded-[4px] flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-sans font-medium transition-all shadow-lg backdrop-blur-md"
+                            >
+                              <Download size={11} /> Export JSON
+                            </button>
+                          </div>
+                          
+                          {activeTab === 'tree' && (
+                            <div className="p-6 overflow-auto h-full">
+                              <div className="border border-white/[0.03] bg-[#1c1c22]/50 p-5 rounded-xl shadow-xl relative overflow-hidden backdrop-blur-sm max-w-4xl">
+                                <div className="border-b border-white/[0.04] pb-3 mb-4 flex items-center justify-between text-xs font-sans select-none">
+                                  <div>
+                                    <span className="text-neutral-500 uppercase text-[8px] font-semibold tracking-wider block">Document Path</span>
+                                    <span className="text-neutral-200 font-semibold font-mono text-[10px]">{selectedDocument.path}</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="text-neutral-500 uppercase text-[8px] font-semibold tracking-wider block">Last Synced</span>
+                                    <span className="text-[#60cdff] font-semibold text-[9px]">
+                                      {selectedDocument.updateTime ? new Date(selectedDocument.updateTime).toLocaleTimeString() : 'N/A'}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="space-y-0.5 mt-2 font-mono">
+                                  <div className="text-[#727278] text-xs">{'{'}</div>
+                                  {Object.keys(selectedDocument.data).length === 0 ? (
+                                    <div className="pl-4 text-neutral-500 italic text-[11px] font-sans">// empty document</div>
+                                  ) : (
+                                    Object.keys(selectedDocument.data).map((key, idx, arr) => (
+                                      <JSONNode key={key} name={key} value={selectedDocument.data[key]} isLast={idx === arr.length - 1} />
+                                    ))
+                                  )}
+                                  <div className="text-[#727278] text-xs">{'}'}</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {activeTab === 'json' && (
+                             <div className="h-full pt-16 relative">
+                                <Editor 
+                                  height="100%" 
+                                  defaultLanguage="json" 
+                                  theme="vs-dark" 
+                                  value={JSON.stringify(selectedDocument.data, null, 2)} 
+                                  options={{ readOnly: readOnlyMode, minimap: { enabled: false }, fontSize: 12, padding: { top: 16 }, scrollBeyondLastLine: false }}
+                                />
+                             </div>
+                          )}
+                        </>
                       )}
-
-                      <div className="text-[#727278] text-xs">{'}'}</div>
                     </div>
-
-                  </div>
+                  </>
                 )}
               </div>
             </div>
@@ -817,6 +1048,79 @@ export default function App() {
               }}>
                 Open Firebase Console
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SQL Migration Blueprint Modal */}
+      {showSqlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-[#121216] border border-white/10 rounded-xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col" style={{ height: '80vh' }}>
+            <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#1c1c22]">
+              <div className="flex items-center gap-2">
+                <Database size={18} className="text-indigo-400" />
+                <h2 className="text-sm font-semibold text-white tracking-wide">SQL Migration Engine</h2>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 ml-2 font-mono">{selectedCollection}</span>
+              </div>
+              <button onClick={() => setShowSqlModal(false)} className="text-neutral-500 hover:text-white p-1 transition-colors">✕</button>
+            </div>
+            
+            <div className="flex-1 flex overflow-hidden">
+               {/* Left side: Schema Inference Viewer */}
+               <div className="flex-1 border-r border-white/5 p-4 flex flex-col bg-[#16161c]">
+                 <h3 className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-4 border-b border-white/5 pb-2">Inferred Table Schema</h3>
+                 <div className="flex-1 overflow-auto">
+                   {!inferredSchema ? (
+                     <div className="h-full flex items-center justify-center text-xs text-neutral-500 gap-2">
+                        <RefreshCw className="animate-spin text-indigo-400" size={14} /> Analyzing Types...
+                     </div>
+                   ) : (
+                     <table className="w-full text-left border-collapse text-xs">
+                       <thead>
+                         <tr>
+                           <th className="py-2 px-3 bg-[#202026] text-neutral-300 font-medium border-b border-white/5">Column Name</th>
+                           <th className="py-2 px-3 bg-[#202026] text-neutral-300 font-medium border-b border-white/5">Inferred Type</th>
+                         </tr>
+                       </thead>
+                       <tbody>
+                         {inferredSchema.columns.map((col: any) => (
+                           <tr key={col.name} className="border-b border-white/[0.02] hover:bg-white/[0.02]">
+                             <td className="py-2 px-3 font-mono text-neutral-400">{col.name}</td>
+                             <td className="py-2 px-3 text-indigo-300 font-mono text-[10px]">{col.type}</td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   )}
+                 </div>
+               </div>
+
+               {/* Right side: Generated SQL DDL */}
+               <div className="flex-1 flex flex-col">
+                  <h3 className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider p-4 border-b border-white/5 bg-[#16161c] m-0 shrink-0">Generated SQL DDL</h3>
+                  <div className="flex-1 relative">
+                    {!generatedSql ? (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-500 bg-[#0f0f12]">Generating DDL...</div>
+                    ) : (
+                      <Editor 
+                        height="100%" 
+                        defaultLanguage="sql" 
+                        theme="vs-dark" 
+                        value={generatedSql}
+                        options={{ readOnly: true, minimap: { enabled: false }, fontSize: 13, padding: { top: 16 } }}
+                      />
+                    )}
+                  </div>
+               </div>
+            </div>
+
+            <div className="p-3 border-t border-white/5 flex justify-end gap-3 bg-[#1c1c22]">
+              <Button size="sm" variant="secondary" onClick={() => setShowSqlModal(false)}>Close</Button>
+              <Button size="sm" variant="primary" className="bg-indigo-600 hover:bg-indigo-700 text-white" disabled={!generatedSql} onClick={() => {
+                navigator.clipboard.writeText(generatedSql);
+                addToast('Copied', 'SQL DDL copied to clipboard.', 'success');
+              }}>Copy SQL</Button>
             </div>
           </div>
         </div>

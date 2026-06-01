@@ -6,7 +6,9 @@ import {
   listRootCollections, 
   getCollectionDocuments, 
   exportDatabase, 
-  writeExportToFile 
+  writeExportToFile,
+  inferCollectionSchema,
+  generateSqlDDL
 } from '@firestore-exporter/core';
 
 let mainWindow: BrowserWindow | null = null;
@@ -91,10 +93,30 @@ ipcMain.handle('list-collections', async () => {
 });
 
 // Get document data for a collection
-ipcMain.handle('get-documents', async (_, collectionId: string) => {
+ipcMain.handle('get-documents', async (_, collectionId: string, limitNum: number = 50, queries: any[] = [], sorts: any[] = []) => {
   try {
-    const documents = await getCollectionDocuments(collectionId);
+    const documents = await getCollectionDocuments(collectionId, limitNum, queries, sorts);
     return { success: true, documents };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Infer SQL schema
+ipcMain.handle('infer-schema', async (_, collectionId: string) => {
+  try {
+    const schema = await inferCollectionSchema(collectionId);
+    return { success: true, schema };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Generate SQL DDL
+ipcMain.handle('generate-sql', async (_, schema: any) => {
+  try {
+    const sql = generateSqlDDL(schema);
+    return { success: true, sql };
   } catch (error: any) {
     return { success: false, error: error.message };
   }

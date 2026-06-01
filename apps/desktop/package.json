@@ -1,23 +1,27 @@
 {
   "name": "firestore-exporter-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "./dist/main/main.js",
   "scripts": {
     "dev:renderer": "vite",
-    "dev:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --watch --onSuccess \"node scripts/dev-electron.js\"",
+    "dev:main": "tsup --watch --onSuccess \"node scripts/dev-electron.js\"",
     "dev": "concurrently -k -s first \"pnpm dev:renderer\" \"pnpm dev:main\"",
     "build:deps": "pnpm --filter @firestore-exporter/core build && pnpm --filter @firestore-exporter/ui build",
     "build:renderer": "vite build",
-    "build:main": "tsup src/main/main.ts src/main/preload.ts --out-dir dist/main --format cjs --external electron --external @firestore-exporter/core --minify",
+    "build:main": "tsup",
     "build": "pnpm build:deps && pnpm build:renderer && pnpm build:main",
     "dist": "pnpm build && electron-builder"
   },
   "dependencies": {
     "@firestore-exporter/core": "workspace:*",
     "@firestore-exporter/ui": "workspace:*",
+    "@google-cloud/firestore": "^8.6.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@tanstack/react-virtual": "^3.13.26",
+    "firebase-admin": "^12.7.0",
+    "lucide-react": "^0.359.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "lucide-react": "^0.359.0"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
@@ -46,6 +50,7 @@
     },
     "mac": {
       "target": "dmg",
+      "identity": null,
       "category": "public.app-category.developer-tools"
     },
     "linux": {
