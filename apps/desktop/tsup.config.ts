@@ -5,7 +5,7 @@ export default defineConfig((options) => ({
   outDir: 'dist/main',
   format: ['cjs'],
   external: ['electron'],
-  noExternal: ['@firestore-exporter/core'],
+  noExternal: ['@firestore-exporter/core', 'firebase-admin', '@google-cloud/firestore'],
   clean: false,
   minify: !options.watch,
   sourcemap: false,
