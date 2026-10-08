@@ -1512,34 +1512,9 @@ footer strong {
   color: var(--color-amber);
 }
 
-/* Mobile styles for simulator */
-.sim-mobile-tabs {
-  display: none;
-  padding: 0.4rem;
-  background: #0d0d12;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  gap: 0.4rem;
-}
-
-.sim-mobile-tab-btn {
-  flex: 1;
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  padding: 0.35rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: center;
-}
-
-.sim-mobile-tab-btn.active {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
+/* ----------------------------------------------------
+   RESPONSIVE & MOBILE / PHONE VIEW OPTIMIZATIONS
+---------------------------------------------------- */
 @media (max-width: 900px) {
   .sim-mobile-tabs {
     display: flex;
@@ -1556,4 +1531,312 @@ footer strong {
     min-width: 100% !important;
     border-right: none !important;
   }
+  .simulator-window {
+    aspect-ratio: auto;
+    min-height: 600px;
+  }
 }
+
+@media (max-width: 768px) {
+  /* Layout & Container Padding */
+  .container {
+    padding: 0 1rem;
+  }
+
+  header {
+    padding: 1rem 0;
+  }
+
+  .logo-text {
+    font-size: 1.15rem;
+  }
+
+  .engine-badge {
+    display: none;
+  }
+
+  .nav-actions {
+    gap: 0.4rem;
+  }
+
+  .antigravity-toggle {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.72rem;
+  }
+
+  .btn-github-nav {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.72rem;
+  }
+
+  /* Hero Section */
+  .hero-section {
+    padding: 2.5rem 0 1.5rem;
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 7.5vw, 2.6rem);
+    letter-spacing: -0.8px;
+    margin-bottom: 0.8rem;
+    line-height: 1.2;
+  }
+
+  .description {
+    font-size: 0.95rem;
+    margin: 0 auto 2rem;
+    line-height: 1.5;
+  }
+
+  /* Download Section - Streamlined clean rows without bulky box nesting */
+  .download-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    max-width: 100%;
+    margin: 0 auto 2.5rem;
+  }
+
+  .download-card {
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    box-shadow: none;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(13, 13, 18, 0.5);
+  }
+
+  .download-card::before {
+    display: none;
+  }
+
+  .platform-icon-wrapper {
+    display: none;
+  }
+
+  .platform-name {
+    font-size: 0.95rem;
+    margin-bottom: 0.1rem;
+  }
+
+  .file-extension {
+    margin-bottom: 0;
+    font-size: 0.65rem;
+  }
+
+  .btn-action-download {
+    width: auto;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
+    margin-left: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  /* Section Headers */
+  .section-title-wrapper {
+    margin: 3.5rem 0 1.25rem;
+    text-align: left;
+  }
+
+  .section-title {
+    font-size: 1.45rem;
+    letter-spacing: -0.5px;
+    margin-bottom: 0.4rem;
+  }
+
+  .section-subtitle {
+    font-size: 0.85rem;
+    margin: 0;
+    line-height: 1.45;
+  }
+
+  /* Features Articles - Remove random card boxes & icon boxes, use clean padding only */
+  .features-section {
+    padding: 0 0 2rem;
+  }
+
+  .features-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .feature-card {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 1.15rem 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+    transform: none !important;
+  }
+
+  .feature-card:hover {
+    background: transparent !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border-color: rgba(255, 255, 255, 0.06) !important;
+  }
+
+  .feature-icon-box {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin-top: 3px !important;
+    color: var(--color-amber) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .feature-title {
+    font-size: 1rem;
+    margin-bottom: 0.2rem;
+    font-weight: 700;
+  }
+
+  .feature-desc {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+
+  /* Stepper Guide - Clean vertical steps without random card boxes */
+  .guide-section {
+    padding: 0 0 2rem;
+  }
+
+  .guide-steps-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .guide-card {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 1.15rem 0 !important;
+  }
+
+  .guide-num {
+    position: static !important;
+    font-size: 1.1rem !important;
+    font-weight: 800 !important;
+    margin-bottom: 0.25rem !important;
+    display: inline-block !important;
+    color: var(--color-orange) !important;
+    -webkit-text-fill-color: var(--color-orange) !important;
+  }
+
+  .guide-title {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .guide-desc {
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+
+  /* Technical Specs - Horizontal scroll support */
+  .specs-section {
+    padding: 0 0 2rem;
+  }
+
+  .specs-table-wrapper {
+    border-radius: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .specs-table {
+    min-width: 460px;
+  }
+
+  .specs-table th, .specs-table td {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.76rem;
+  }
+
+  /* FAQ Accordion - Clean dividers without heavy boxes */
+  .faq-section {
+    padding: 0 0 2.5rem;
+  }
+
+  .faq-container {
+    gap: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .faq-item {
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 0 !important;
+  }
+
+  .faq-item.active {
+    background: transparent !important;
+    border-bottom-color: rgba(251, 191, 36, 0.25) !important;
+  }
+
+  .faq-trigger {
+    padding: 0.9rem 0;
+    font-size: 0.92rem;
+  }
+
+  .faq-content {
+    padding: 0 0 0.9rem 0;
+    font-size: 0.82rem;
+  }
+
+  /* Simulator optimizations on phone */
+  .screenshot-showcase {
+    padding-bottom: 1.5rem;
+  }
+
+  .simulator-window {
+    border-radius: 8px;
+    min-height: 520px;
+  }
+
+  .sim-titlebar {
+    height: 38px;
+    padding: 0 0.75rem;
+  }
+
+  .sim-title {
+    font-size: 0.72rem;
+  }
+
+  .sim-query-builder {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .sim-fields-workspace, 
+  .sim-table-workspace, 
+  .sim-script-shell-workspace {
+    padding: 0.75rem;
+  }
+
+  footer {
+    padding: 1.5rem 0;
+    font-size: 0.75rem;
+  }
+}
+
